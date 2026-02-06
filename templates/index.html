@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokémon Collection Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Pokémon Collection Tracker</h1>
+            <p class="subtitle">Python keeps receipts and I ignore them.</p>
+        </div>
+
+        <div id="app">
+            <div class="loading">
+                <div class="loading-title">Loading receipts...</div>
+                <div class="loading-text">Python is retrieving the data</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Card Modal -->
+    <div id="addCardModal" class="modal">
+        <div class="modal-content">
+            <h2 class="modal-title">Add New Card</h2>
+            <form id="addCardForm">
+                <div class="form-group">
+                    <label class="form-label">Card Name</label>
+                    <input type="text" id="cardName" class="form-input" required placeholder="ex. Eevee">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Set Name</label>
+                    <input type="text" id="setName" class="form-input" required placeholder="ex. Prismatic Evolutions">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Rarity</label>
+                    <input type="text" id="rarity" class="form-input" required placeholder="ex. Double Rare">
+                </div>
+                <div id="statusMessage"></div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Card</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let cards = [];
+        let sortBy = 'price-desc';
+
+        async function fetchCards() {
+            try {
+                const response = await fetch('http://localhost:5000/api/cards');
+                if (!response.ok) throw new Error('Failed to fetch cards');
+                cards = await response.json();
+                renderApp();
+            } catch (err) {
+                renderError(err.message);
+            }
+        }
+
+        function getSortedCards() {
+            const sorted = [...cards];
+            switch (sortBy) {
+                case 'price-desc':
+                    return sorted.sort((a, b) => b.price - a.price);
+                case 'price-asc':
+                    return sorted.sort((a, b) => a.price - b.price);
+                case 'name':
+                    return sorted.sort((a, b) => a.name.localeCompare(b.name));
+                default:
+                    return sorted;
+            }
+        }
+
+        function renderApp() {
+            const totalValue = cards.reduce((sum, card) => sum + parseFloat(card.price || 0), 0);
+            const sortedCards = getSortedCards();
+            
+            // Format date as MM/DD/YYYY
+            const today = new Date();
+            const formattedDate = `${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}/${today.getFullYear()}`;
+
+            const html = `
+                <div class="stats-bar">
+                    <div class="stat-box">
+                        <div class="stat-label">Total Cards</div>
+                        <div class="stat-value">${cards.length}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Collection Value</div>
+                        <div class="stat-value">${totalValue.toFixed(2)}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Average Value</div>
+                        <div class="stat-value">${cards.length > 0 ? (totalValue / cards.length).toFixed(2) : '0.00'}</div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <div class="timestamp">
+                        Receipts collected: ${formattedDate}
+                    </div>
+                    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                        <button class="add-card-btn" onclick="openModal()">+ Add Card</button>
+                        <button class="refresh-btn" id="refreshBtn" onclick="refreshAllPrices()">🔄 Refresh Prices</button>
+                        <div class="sort-container">
+                            <label class="sort-label">Sort by:</label>
+                            <select id="sortSelect" onchange="handleSortChange(this.value)">
+                                <option value="price-desc" ${sortBy === 'price-desc' ? 'selected' : ''}>Price (High to Low)</option>
+                                <option value="price-asc" ${sortBy === 'price-asc' ? 'selected' : ''}>Price (Low to High)</option>
+                                <option value="name" ${sortBy === 'name' ? 'selected' : ''}>Name (A-Z)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                ${cards.length === 0 ? `
+                    <div class="empty">
+                        <div style="color: #999; font-size: 1.125em;">No cards found</div>
+                        <div style="color: #999; font-size: 0.875em; margin-top: 8px;">Python hasn't logged anything yet</div>
+                    </div>
+                ` : `
+                    <div class="cards-grid">
+                        ${sortedCards.map(card => `
+                            <div class="card">
+                                <div class="card-image-container">
+                                    <img src="${card.image}" alt="${card.name}" class="card-image">
+                                </div>
+                                <div class="card-content">
+                                    <h3 class="card-name">${card.name}</h3>
+                                    <div class="price-box">
+                                        <div class="price-label">Market Price</div>
+                                        <div class="price-value">${parseFloat(card.price).toFixed(2)}</div>
+                                    </div>
+                                    <button class="remove-btn" onclick="removeCard('${card.name.replace(/'/g, "\\'")}')">Remove Card</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `}
+
+                <div class="footer">
+                    <div class="rule-box">
+                        <div class="rule-title">The Rule</div>
+                        <div class="rule-text">If it happened, Python knows about it.</div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('app').innerHTML = html;
+        }
+
+        function renderError(message) {
+            const html = `
+                <div class="error">
+                    <div class="error-box">
+                        <div class="error-title">Error loading cards</div>
+                        <div class="error-text">${message}</div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('app').innerHTML = html;
+        }
+
+        function handleSortChange(value) {
+            sortBy = value;
+            renderApp();
+        }
+
+        function openModal() {
+            document.getElementById('addCardModal').classList.add('active');
+            document.getElementById('addCardForm').reset();
+            document.getElementById('statusMessage').innerHTML = '';
+        }
+
+        function closeModal() {
+            document.getElementById('addCardModal').classList.remove('active');
+        }
+
+        async function addCard(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('cardName').value;
+            const setName = document.getElementById('setName').value;
+            const rarity = document.getElementById('rarity').value;
+            const statusDiv = document.getElementById('statusMessage');
+            
+            statusDiv.innerHTML = '<div class="status-message status-loading">Adding card to collection...</div>';
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/add-card', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        set_name: setName,
+                        rarity: rarity
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    statusDiv.innerHTML = '<div class="status-message status-success">Card added! Refreshing...</div>';
+                    
+                    setTimeout(() => {
+                        closeModal();
+                        fetchCards();
+                    }, 1000);
+                } else {
+                    const result = await response.json();
+                    throw new Error(result.error || 'Failed to add card');
+                }
+                
+            } catch (err) {
+                statusDiv.innerHTML = `<div class="status-message status-error">${err.message}</div>`;
+            }
+        }
+
+        document.getElementById('addCardForm').addEventListener('submit', addCard);
+
+        document.getElementById('addCardModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+
+        async function removeCard(cardName) {
+            if (!confirm(`Remove "${cardName}" from your collection?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/remove-card', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: cardName
+                    })
+                });
+                
+                if (response.ok) {
+                    // Show success message
+                    showToast('Card successfully removed.');
+                    
+                    // Wait a moment then refresh
+                    setTimeout(() => {
+                        fetchCards();
+                    }, 1500);
+                } else {
+                    const result = await response.json();
+                    alert('Error: ' + (result.error || 'Failed to remove card'));
+                }
+                
+            } catch (err) {
+                alert('Error removing card: ' + err.message);
+            }
+        }
+
+        function showToast(message) {
+            // Remove any existing toast
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+            
+            // Create new toast
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // Remove after animation
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 1500);
+        }
+
+        async function refreshAllPrices() {
+            const btn = document.getElementById('refreshBtn');
+            
+            if (!confirm('Refresh all card prices? This may take a moment.')) {
+                return;
+            }
+            
+            // Disable button and show loading
+            btn.disabled = true;
+            btn.textContent = '🔄 Updating...';
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/refresh-prices', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    showToast(`Refresh completed! Updated ${result.updated} out of ${result.total} cards.`);
+                    
+                    setTimeout(() => {
+                        fetchCards();
+                        btn.disabled = false;
+                        btn.textContent = '🔄 Refresh Prices';
+                    }, 2000);
+                } else {
+                    const result = await response.json();
+                    alert('Error: ' + (result.error || 'Failed to refresh prices'));
+                    btn.disabled = false;
+                    btn.textContent = '🔄 Refresh Prices';
+                }
+                
+            } catch (err) {
+                alert('Error refreshing prices: ' + err.message);
+                btn.disabled = false;
+                btn.textContent = '🔄 Refresh Prices';
+            }
+        }
+
+        fetchCards();
+    </script>
+</body>
+</html>
